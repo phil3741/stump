@@ -497,8 +497,34 @@ export default function EpubJsReader({ id, initialCfi }: EpubJsReaderProps) {
 		}
 
 		let percentage: number | null = null
+		const hasNumber = (value: number | null | undefined): value is number =>
+			typeof value === 'number' && !Number.isNaN(value)
 
-		if (spineSize) {
+		if (sectionsLengths?.lengths && hasNumber(sectionsLengths.lengths[start.index])) {
+			const lengths = sectionsLengths.lengths
+			const currentSectionLength = lengths[start.index] ?? 0
+			const totalLength = Object.values(lengths).reduce((sum, value) => sum + value, 0)
+
+			if (totalLength > 0) {
+				const pagesInChapter = start.displayed.total || 0
+				const currentChapterPage = start.displayed.page || 0
+				const chapterPercentage =
+					pagesInChapter > 0 ? currentChapterPage / pagesInChapter : 0
+				let previousSectionsLength = 0
+				for (const [index, length] of Object.entries(lengths)) {
+					if (Number(index) < start.index) {
+						previousSectionsLength += length
+					}
+				}
+
+				const position = previousSectionsLength + currentSectionLength * chapterPercentage
+				percentage = Math.min(Math.max(position / totalLength, 0), 1)
+			}
+		} else if (hasNumber(start.percentage)) {
+			percentage = start.percentage > 1 ? start.percentage / 100 : start.percentage
+		}
+
+		if (spineSize && percentage === null) {
 			const currentChapterPage = start.displayed.page
 			const pagesInChapter = start.displayed.total
 
@@ -523,13 +549,16 @@ export default function EpubJsReader({ id, initialCfi }: EpubJsReaderProps) {
 				percentage = naiveTotal
 			}
 
+		}
+
+		if (percentage !== null) {
 			handleUpdateProgress({
 				epubcfi: start.cfi,
 				is_complete: atEnd ?? percentage === 1.0,
 				percentage,
 			})
 		}
-	}, [currentLocation, spineSize, epub, sdk.epub])
+	}, [currentLocation, spineSize, epub, sdk.epub, sectionsLengths])
 
 	/**
 	 * A callback for attempting to extract preview text from a given cfi. This is used for bookmarks,
